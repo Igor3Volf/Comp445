@@ -3,10 +3,13 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -22,37 +25,43 @@ public class Httpc {
 	private static boolean isF = false;
 	private static boolean isGet = false;
 	private static boolean isPost = false;
-	private static HashMap<String, String> headerArgument = new <String, String>HashMap();
-	private static HashMap<String, String> inlineArg = new <String, String>HashMap();
-
+	private static LinkedHashMap<String, String> headerArgument = new <String, String>LinkedHashMap();
+	private static LinkedHashMap<String, String> inlineArg = new <String, String>LinkedHashMap();
 	private static String url = "";
-	// CMD Option
 
 	public static void main(String[] args) throws Exception {
 
 		System.out.println("Hello user, enter a cURL command:");
 		Scanner in = new Scanner(System.in);
 		String command = in.nextLine();
-		String[] word = command.split("\\s");
-
+		String[] word = command.split("'");
+		
 		for (int i = 0; i < word.length; i++) {
-			System.out.println(word[i]);
-			if (word[i].equals("-v")) {
+			if (word[i].contains("-v")) {
 				isV = true;
 			}
-			if (word[i].equals("-h")) {
-				isH = true;
-				int nextI = i + 1;
-				String[] kv = word[nextI].split(":");
-				headerArgument.put(kv[0], kv[1]);
+			if (word[i].contains("-h")) {
+				String[] arg = word[i].split("\\s");
+				for(int index=0;index <arg.length;index++) {
+
+					if (arg[index].contains("-h")) {
+						isH = true;					
+						int nextI = index + 1;
+						String[] kv = arg[nextI].split(":");
+						headerArgument.put(kv[0], kv[1]);					
+					}
+				}
 			}
 			if (word[i].contains("-d")) {
 				isD = true;
 				int nextI = i + 1;
-				String[] kv = word[nextI].split(":");
+				String textToSend= word[nextI].replaceAll("[\"{}]", "");
+				System.out.println(textToSend);
+				String[] kv = textToSend.split(":");
 				inlineArg.put(kv[0], kv[1]);
+
 			}
-			if (word[i].equals("-f")) {
+			if (word[i].contains("-f")) {
 				if (isD) {
 					System.out.println("You cannot have -d and -f at the same time.");
 					System.exit(0);
@@ -96,61 +105,43 @@ public class Httpc {
 
 		} else {
 			if (isGet) {
-				getMethod(url, isV, headerArgument, "");
-			} else if (isPost) {
-				
-
-				String content = "{\"Assignment\":1}";
-				byte[] bytes = doPostMethod(url, content.getBytes("UTF-8"), headerArgument);
-				String doc2=new String(bytes, "UTF-8");
-				System.out.println(doc2);
+				getRequest(url, isV, headerArgument, "");
+			} else if (isPost) {	
+				postRequest(url, inlineArg, headerArgument, isV);
 				//postMethod(url, isV, headerArgument, inlineArg);
 			}
 		}
 	}
 	
-	public static byte[] doPostMethod(String urlstr, byte[] content,Map<String, String> hArgs) throws IOException {
-        InputStream is = null;
-        byte[] data = null;
-        ByteArrayOutputStream baos = null;
-        try {
-            final URL url = new URL("http://httpbin.org/post");
-            final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setDoOutput(true);
-            connection.setUseCaches(false);
-            connection.setRequestMethod("POST");
-            
-            if (hArgs == null) {
-            	connection.setRequestProperty("User-Agent", USER_AGENT);
-            	connection.setRequestProperty("Accept-Language", ACCEPT_LANG);
-    		} else {
-    			for (String key : hArgs.keySet()) {
-    				connection.setRequestProperty(key, hArgs.get(key));
-    			}
-    		}
-            
-            connection.setRequestProperty("Content-Length", String.valueOf(content.length));            
-            OutputStream os = null;
-            os = connection.getOutputStream();
-            os.write(content);
-            os.close();
-            is = connection.getInputStream();            
-            final byte[] buffer = new byte[2 * 1024];
-            baos = new ByteArrayOutputStream();
-            int n;
-            while ((n = is.read(buffer)) >= 0) {
-                baos.write(buffer, 0, n);
-            }
-            data = baos.toByteArray();
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            is.close();
-            baos.close();
-        }
-        return data;
-    }
-	private static void getMethod(String urlString, Boolean verbose, Map<String, String> hArgs, String getParameter)
+	public static void postRequest(String urlstr, LinkedHashMap<String, String> inLArg, LinkedHashMap<String, String> hArgs, Boolean verbose) throws IOException {
+		 
+			URL url = new URL(urlstr);
+		    StringBuilder postData = new StringBuilder();
+		    Map.Entry<String,String> entry = hArgs.entrySet().iterator().next();		    
+		    for (Map.Entry param : inLArg.entrySet()) {
+		        if (postData.length() != 0) postData.append('&');
+		        postData.append(param.getKey());
+		        postData.append('=');
+		        postData.append(String.valueOf(param.getValue()));
+		    }
+		    byte[] postDataBytes = postData.toString().getBytes("UTF-8");
+		    HttpURLConnection conn = (HttpURLConnection)url.openConnection();
+		    conn.setRequestMethod("POST");
+		    conn.setRequestProperty(entry.getKey(), entry.getValue());
+		    conn.setRequestProperty("Content-Length", String.valueOf(postDataBytes.length));
+		    conn.setDoOutput(true);
+		    conn.getOutputStream().write(postDataBytes);
+		    Reader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+		    StringBuilder sb = new StringBuilder();
+		    for (int c; (c = in.read()) >= 0;)
+		        sb.append((char)c);
+		    String response = sb.toString();
+			isVerbose(conn, verbose); 
+		    System.out.println(response);
+		   
+		}
+		
+	private static void getRequest(String urlString, Boolean verbose, Map<String, String> hArgs, String getParameter)
 			throws Exception {
 		String url = urlString.concat(getParameter);
 		System.out.println("\nSending 'GET' request to URL : " + url);
@@ -170,9 +161,7 @@ public class Httpc {
 			}
 		}
 
-		// isRedirect(con, verbose); 
 		isVerbose(con, verbose); 
-
 		// Display output
 		outputResponse(con, url, con.getResponseCode());
 	}
